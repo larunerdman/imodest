@@ -1,0 +1,15 @@
+#!/bin/bash
+
+#CANCERS=BLCA
+#CANCERS=(PAAD SKCM BRCA LGG PCPG CESC ESCA LIHC PRAD STAD GBM LUAD TGCT HNSC LUSC READ-COAD THCA KIRC SARC THYM KIRP OV UCEC)
+#CANCERS=(BLCA PAAD SKCM BRCA LGG PCPG CESC ESCA LIHC PRAD STAD GBM LUAD TGCT HNSC LUSC READ-COAD THCA KIRC SARC THYM KIRP OV UCEC)
+CANCERS=READ-COAD
+
+WORKING_DIR=/hpf/largeprojects/agoldenb/lauren/Modes/scripts/data-processing/updating-som-vars/
+
+for i in "${CANCERS[@]}" ; do 
+	CANCER=$i		
+	qsub $WORKING_DIR/updating-som-variants-tcga.sh -v WORKING_DIR=$WORKING_DIR,CANCER=$CANCER -l mem=40g,vmem=40g,walltime=48:00:00 ; sleep 3 ; 	
+done 
+
+

@@ -1,0 +1,394 @@
+---
+title: "iModEst_Fig4d"
+author: "Lauren Erdman"
+date: "January 17, 2023"
+output: html_document
+---
+
+```{r, include=FALSE}
+### Required packages
+
+library("ggplot2")
+library("reshape")
+library("RColorBrewer")
+library("cluster")
+library("httr")
+
+```
+
+
+```{r, include=FALSE}
+
+## user-defined functions
+read_remote_rds <- function(url) {
+  # Make a GET request and save the response
+  response <- GET(url)
+ 
+  # Check if the request was successful
+  stop_for_status(response)
+ 
+  # Write the raw content to a temporary file and read it with readRDS
+  temp_file <- tempfile(fileext = ".rds")
+  writeBin(content(response), temp_file)
+  data <- readRDS(temp_file)
+ 
+  # Return the data
+  return(data)
+}
+
+add.alpha <- function(col, alpha=1){
+  if(missing(col))
+    stop("Please provide a vector of colours.")
+  apply(sapply(col, col2rgb)/255, 2, 
+        function(x) 
+          rgb(x[1], x[2], x[3], alpha=alpha))  
+}
+
+plot.r2.addition <- function(df,row.num,ylim=c(-1,1)){
+  vars.removed <- matrix(nrow=0,ncol=3)
+  colnames(vars.removed) <- c("var.added","base.model","r2.growth")
+  
+  for(k in rev(unique(nchar(colnames(df))))[1:(length(rev(unique(nchar(colnames(df)))))-1)]){
+    mods <- colnames(df)[which(nchar(colnames(df)) == k)]
+    mods.min.1 <- colnames(df)[which(nchar(colnames(df)) == (k-1))]
+    
+    for(i in 1:6){
+      vars.removed <- rbind(vars.removed,cbind(rep(i,length(mods.min.1[grep(pattern = i,x = mods.min.1,invert = TRUE)])),mods.min.1[grep(pattern = i,x = mods.min.1,invert = TRUE)],unlist(df[row.num,mods[grep(pattern = i,x = mods)]] - df[row.num,mods.min.1[grep(pattern = i,x = mods.min.1,invert = TRUE)]])))
+    }
+  }
+  
+  # dim(vars.removed)
+  # head(vars.removed)
+  
+  vars.removed <- as.data.frame(vars.removed)
+  vars.removed$r2.growth <- as.numeric(as.character(vars.removed$r2.growth))
+  vars.removed$var.added.f <- factor(vars.removed$var.added,levels=1:6,labels=c("miRNA","TF","lncRNA","methyl","CNV","SNP"))
+  vars.removed$base.model <- as.character(vars.removed$base.model)
+  # str(vars.removed)
+  # head(vars.removed)
+  
+  ## DARKER = VARIABLE ADDED TO MODEL WITH FEWER PREDICTORS
+  graph.list <- split(x = vars.removed$r2.growth,f = vars.removed$var.added.f)
+  # sapply(1:)
+  alpha.list <- split(x = 1-nchar(x = vars.removed$base.model)/10,f = vars.removed$var.added.f)
+  
+  # par(mfrow=c(1,1))
+  # stripchart(split(x = vars.removed$r2.growth,f = vars.removed$var.added.f),method = "jitter",vertical = T,pch=19,col = add.alpha(col = "darkorchid",alpha = 0.7))
+  stripchart(split(x = vars.removed$r2.growth,f = vars.removed$var.added.f),method = "jitter",vertical = T,pch=19,col = 'white',ylim=ylim,
+             xlab = "",ylab = "",cex=2)
+  for(k in 1:6){
+    points(x = rep(k,length(graph.list[[k]])) + rnorm(n = length(graph.list[[k]]),0,0.1),y = graph.list[[k]],col = add.alpha(col = "blue",alpha.list[[k]]*2),pch=19,cex=2)
+    points(x = k, y = df[row.num,paste0("glm_",k)],pch = 18,col = 'red',cex=2)
+  }
+  
+  
+}
+
+plot.r2.addition.ZERO <- function(df,row.num,ylim=c(-1,1)){
+  vars.removed <- matrix(nrow=0,ncol=3)
+  colnames(vars.removed) <- c("var.added","base.model","r2.growth")
+  
+  df[df < 0] <- 0
+  
+  for(k in rev(unique(nchar(colnames(df))))[1:(length(rev(unique(nchar(colnames(df)))))-1)]){
+    mods <- colnames(df)[which(nchar(colnames(df)) == k)]
+    mods.min.1 <- colnames(df)[which(nchar(colnames(df)) == (k-1))]
+    
+    for(i in 1:6){
+      vars.removed <- rbind(vars.removed,cbind(rep(i,length(mods.min.1[grep(pattern = i,x = mods.min.1,invert = TRUE)])),mods.min.1[grep(pattern = i,x = mods.min.1,invert = TRUE)],unlist(df[row.num,mods[grep(pattern = i,x = mods)]] - df[row.num,mods.min.1[grep(pattern = i,x = mods.min.1,invert = TRUE)]])))
+    }
+  }
+  
+  # dim(vars.removed)
+  # head(vars.removed)
+  
+  vars.removed <- as.data.frame(vars.removed)
+  vars.removed$r2.growth <- as.numeric(as.character(vars.removed$r2.growth))
+  vars.removed$var.added.f <- factor(vars.removed$var.added,levels=1:6,labels=c("miRNA","TF","lncRNA","methyl","CNV","SNP"))
+  vars.removed$base.model <- as.character(vars.removed$base.model)
+  # str(vars.removed)
+  # head(vars.removed)
+  
+  ## DARKER = VARIABLE ADDED TO MODEL WITH FEWER PREDICTORS
+  graph.list <- split(x = vars.removed$r2.growth,f = vars.removed$var.added.f)
+  # sapply(1:)
+  alpha.list <- split(x = 1-nchar(x = vars.removed$base.model)/10,f = vars.removed$var.added.f)
+  
+  # par(mfrow=c(1,1))
+  # stripchart(split(x = vars.removed$r2.growth,f = vars.removed$var.added.f),method = "jitter",vertical = T,pch=19,col = add.alpha(col = "darkorchid",alpha = 0.7))
+  stripchart(split(x = vars.removed$r2.growth,f = vars.removed$var.added.f),method = "jitter",vertical = T,pch=19,col = 'white',ylim=ylim,
+             xlab = "",ylab = "",cex=2)
+  for(k in 1:6){
+    points(x = rep(k,length(graph.list[[k]])) + rnorm(n = length(graph.list[[k]]),0,0.1),y = graph.list[[k]],col = add.alpha(col = "blue",alpha.list[[k]]*2),pch=19,cex=2)
+    points(x = k, y = df[row.num,paste0("glm_",k)],pch = 18,col = 'red',cex=2)
+  }
+  
+  
+}
+
+get.r2.addition.ZERO <- function(df,row.num,ylim=c(-1,1)){
+  vars.removed <- matrix(nrow=0,ncol=4)
+  colnames(vars.removed) <- c("var.added","base.model","r2.growth","mod.r2")
+  
+  df[df < 0] <- 0
+  
+  for(k in rev(unique(nchar(colnames(df))))[1:(length(rev(unique(nchar(colnames(df)))))-1)]){
+    mods <- colnames(df)[which(nchar(colnames(df)) == k)]
+    mods.min.1 <- colnames(df)[which(nchar(colnames(df)) == (k-1))]
+    
+    for(i in 1:6){
+      vars.removed <- rbind(vars.removed,
+                            cbind(rep(i,length(mods.min.1[grep(pattern = i,x = mods.min.1,invert = TRUE)])),
+                                  mods.min.1[grep(pattern = i,x = mods.min.1,invert = TRUE)],
+                                  unlist(df[row.num,mods[grep(pattern = i,x = mods)]] - 
+                                           df[row.num,mods.min.1[grep(pattern = i,x = mods.min.1, invert = TRUE)]]),
+                                  unlist(df[row.num,mods[grep(pattern = i,x = mods)]] - 
+                                           rep(0,length(df[row.num,mods.min.1[grep(pattern = i,x = mods.min.1, invert = TRUE)]])))))
+    }
+  }
+  
+  # dim(vars.removed)
+  # head(vars.removed)
+  
+  vars.removed <- as.data.frame(vars.removed)
+  vars.removed$r2.growth <- as.numeric(as.character(vars.removed$r2.growth))
+  vars.removed$mod.r2 <- as.numeric(as.character(vars.removed$mod.r2))
+  vars.removed$var.added.f <- factor(vars.removed$var.added,levels=1:6,labels=c("miRNA","TF","lncRNA","methyl","CNV","SNP"))
+  vars.removed$base.model <- as.character(vars.removed$base.model)
+  vars.removed$gene <- rownames(df)[row.num]
+  # str(vars.removed)
+  # head(vars.removed)
+  
+  return(vars.removed) 
+  
+  ## DARKER = VARIABLE ADDED TO MODEL WITH FEWER PREDICTORS
+  # graph.list <- split(x = vars.removed$r2.growth,f = vars.removed$var.added.f)
+  # alpha.list <- split(x = 1-nchar(x = vars.removed$base.model)/10,f = vars.removed$var.added.f)
+  
+  # par(mfrow=c(1,1))
+  # stripchart(split(x = vars.removed$r2.growth,f = vars.removed$var.added.f),method = "jitter",vertical = T,pch=19,col = add.alpha(col = "darkorchid",alpha = 0.7))
+  
+  ## STRIPCHART
+  # stripchart(split(x = vars.removed$r2.growth,f = vars.removed$var.added.f),method = "jitter",vertical = T,pch=19,col = 'white',ylim=ylim,
+  #            xlab = "",ylab = "",cex=2)
+  # for(k in 1:6){
+  #   points(x = rep(k,length(graph.list[[k]])) + rnorm(n = length(graph.list[[k]]),0,0.1),y = graph.list[[k]],col = add.alpha(col = "blue",alpha.list[[k]]*2),pch=19,cex=2)
+  #   points(x = k, y = df[row.num,paste0("glm_",k)],pch = 18,col = 'red',cex=2)
+  # }
+  
+  
+}
+
+get.mean.add.r2.by.reg <- function(r2.added.list){
+  means.by.reg.list <- lapply(r2.added.list,function(x){
+    sapply(1:6,function(i){
+      mean(x$r2.growth[x$var.added == as.character(i)])
+    })
+  })
+  return(means.by.reg.list)
+}
+
+gg_color_hue <- function(n) {
+  ## ggplot default rainbow colors from: https://stackoverflow.com/questions/8197559/emulate-ggplot2-default-color-palette 
+  # hues = seq(15, 375, length = n + 1)
+  hues = seq(25, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+```
+
+
+##Set overall values
+```{r}
+
+tum.cols <- gg_color_hue(21)
+
+reg.cols <- brewer.pal(n = 6,name = "Dark2")
+
+# cans <- "BLCA, BRCA, CESC, ESCA, HNSC, KIRC, KIRP, LGG, LUAD, LUSC, PAAD, PCPG, PRAD, READ-COAD, SARC, SKCM, STAD, TGCT, THCA, UCEC"
+cans <- "BLCA, BRCA, CESC, ESCA, HNSC, KIRC, KIRP, LGG, LIHC, LUAD, LUSC, PAAD, PCPG, PRAD, READ-COAD, SARC, SKCM, STAD, TGCT, THCA, UCEC"
+tums <- unlist(strsplit(x = cans,split = ",\ "))
+# length(tums)
+names(tum.cols) <- tums
+tum.vec <- tums
+cancers.of.int <- tums
+
+cancers.of.int_normal <- c("BLCA","BRCA","ESCA","HNSC","KIRC","KIRP","LIHC","LUAD","LUSC","PAAD","PCPG","PRAD","THCA","UCEC")
+
+norm.vec <- cancers.of.int_normal
+
+r2_data_path = 'https://imodesttool.com/api/data/download/'
+
+
+```
+
+
+##Read in R2 data
+```{r}
+#####
+###   READING IN NORMAL FILES -- R2
+#####
+
+# norm.file.list <- list.files(path = 'C:/Users/larun/Desktop/Modes/Data/normal pred model performance/r2/')
+# norm.file.list <- norm.file.list[unlist(sapply(norm.vec, function(cancer){grep(pattern = cancer,x = norm.file.list)}))]
+# 
+# norm.r2.dfs <- list()
+# gene.tum.details.df <- list()
+# 
+# k=1
+# for(norm.file.in in norm.file.list){
+# 
+#   ## Reading in PRESS R2 results
+#   norm.r2.dfs[[k]] <- readRDS(paste0('C:/Users/larun/Desktop/Modes/Data/normal pred model performance/r2/',norm.file.in))
+#   cancer <- gsub(pattern = "_.*$",replacement = "",x = norm.file.in)
+#   names(norm.r2.dfs)[k] <- cancer
+# 
+# 
+#   ## Reading in cancer model details
+#   gene.tum.details.df[[k]] <- readRDS(paste0('C:/Users/larun/Desktop/Modes/Data/Info for each gene model each tissue/',list.files('C:/Users/larun/Desktop/Modes/Data/Info for each gene model each tissue/')[grep(pattern = cancer,x = list.files('C:/Users/larun/Desktop/Modes/Data/Info for each gene model each tissue/'))]))
+#   names(gene.tum.details.df)[k] <- cancer
+# 
+#   # clinic.list[[k]] <-  readRDS(paste0('C:/Users/larun/Desktop/Modes/Data/clinical-model-input/',list.files('C:/Users/larun/Desktop/Modes/Data/clinical-model-input/')[grep(pattern = cancer,x = list.files('C:/Users/larun/Desktop/Modes/Data/clinical-model-input//'))]))
+#   # names(clinic.list)[k] <- cancer
+# 
+#   k=k+1
+# }
+# 
+# ### MAKING OVERALL GENE SUMMARY
+# num.reg.sum <- lapply(gene.tum.details.df,function(x){x$NUM_REGULATORS})
+# overall.summary <- Reduce(rbind,num.reg.sum)
+# overall.summary <- overall.summary[!duplicated(overall.summary$target_id),]
+
+```
+
+##Clustering genes within each cancer
+```{r}
+## 
+##    CLUSTERING GENES -- only needs to be run once, output written to files
+##
+
+
+# cancers.of.int= names(norm.r2.dfs)
+
+# # gene.info.list = as.data.frame(gene.tum.details.df[[cancer]][[1]])
+# # head(gene.info.list)
+# # 
+# # all.an.cancers <- c("HNSC","KIRC","KIRP","LIHC","LUAD","LUSC","PAAD","PCPG","PRAD","UCEC","ESCA","SARC","SKCM","CESC")
+# gene.names.list <- lapply(t(norm.r2.dfs),colnames)
+# # str(gene.names.list)
+# # 
+# overlapping.genes <- Reduce(f = function(x,y)intersect(x,y),gene.names.list)
+# str(overlapping.genes) ## 10907
+# # 
+# ##### Making all genes, not just overlapping genes 
+# # ol.genes.r2.dfs <- lapply(t(norm.r2.dfs),function(x){x[,overlapping.genes]})
+# ol.genes.r2.dfs <- norm.r2.dfs
+# str(ol.genes.r2.dfs)
+# names(ol.genes.r2.dfs) <- names(norm.r2.dfs)
+# # 
+# cancer="HNSC"
+# for(cancer in cancers.of.int){
+#   if(length(grep(pattern = cancer,norm.file.list)) == 1){
+#     # i = 1
+#     var.added.list <- list()
+#     var.added.df <- data.frame(matrix(nrow=nrow(t(ol.genes.r2.dfs[[cancer]])),ncol=nrow(get.r2.addition.ZERO(df = t(ol.genes.r2.dfs[[cancer]]),row.num = 1))))
+#     for(i in 1:nrow(t(ol.genes.r2.dfs[[cancer]]))){
+#       var.added.df[i,] <- get.r2.addition.ZERO(df = t(ol.genes.r2.dfs[[cancer]]),row.num = i)$r2.growth
+#       var.added.list[[i]] <- get.r2.addition.ZERO(df = t(ol.genes.r2.dfs[[cancer]]),row.num = i)
+#     }
+#     rownames(var.added.df) <- overall.summary$gene_name[match(row.names(t(ol.genes.r2.dfs[[cancer]])),overall.summary$target_id)]
+#     names(var.added.list)  <- overall.summary$gene_name[match(row.names(t(ol.genes.r2.dfs[[cancer]])),overall.summary$target_id)]
+# #     
+# #     # str(var.added.list)    
+# #     dist.out <- dist(var.added.df)
+# #     # str(dist.out)
+# #     hclust.out <- hclust(dist.out)
+# #     
+# #     clusts <- sapply(2:100,function(i){cutree(hclust.out,i)})
+# #     sil.means <- sapply(2:100,function(i){test <- cutree(tree = hclust.out,k = i) ; sil.out <- silhouette(x = test,dist = dist.out) ; return(mean(sil.out[,3]))})
+# #     sil.sds <- sapply(2:100,function(i){test <- cutree(tree = hclust.out,k = i) ; sil.out <- silhouette(x = test,dist = dist.out) ; return(sd(sil.out[,3]))})
+# #     
+#     saveRDS(var.added.list,paste0("C:/Users/larun/Desktop/Modes/Data/Clustering-output/normal-samples/",cancer,"-var-added-list-allgenes-20can.rds"))
+#     saveRDS(var.added.df,paste0("C:/Users/larun/Desktop/Modes/Data/Clustering-output/normal-samples/",cancer,"-var-added-df-allgenes-20can.rds"))
+# #     saveRDS(dist.out,paste0("C:/Users/larun/Desktop/Modes/Data/Clustering-output/normal-samples/",cancer,"-dist-mat.rds"))
+# #     saveRDS(hclust.out,paste0("C:/Users/larun/Desktop/Modes/Data/Clustering-output/normal-samples/",cancer,"-hclust.rds"))
+# #     saveRDS(sil.means,paste0("C:/Users/larun/Desktop/Modes/Data/Clustering-output/normal-samples/",cancer,"-sil-means.rds"))
+# #     saveRDS(sil.sds,paste0("C:/Users/larun/Desktop/Modes/Data/Clustering-output/normal-samples/",cancer,"-sil-sds.rds"))
+# #     saveRDS(clusts,paste0("C:/Users/larun/Desktop/Modes/Data/Clustering-output/normal-samples/",cancer,"-clusts.rds"))
+# #     
+# #     
+#     cat(paste0("Cancer: ",cancer," complete. \n"))
+# 
+#   }
+# }
+
+
+```
+
+##Preparing data for graph
+```{r}
+
+r2.added.list <- list()
+
+for(cancer in norm.vec){
+  r2.added.list[[cancer]] <- read_remote_rds(paste0(r2_data_path,"/full/performance_files/tumour-adjacent_R2_added_files/",cancer,"-var-added-list.rds"))
+}
+
+# str(r2.added.list[[1]][[1]])
+# names(r2.added.list)
+
+gene.names.list <- lapply(r2.added.list,names)
+# str(gene.names.list)
+# overlapping.genes <- Reduce(f = function(x,y)intersect(x,y),gene.names.list)
+
+r2.added.means.list <- lapply(r2.added.list,get.mean.add.r2.by.reg)
+# str(r2.added.means.list)
+
+reg.means.df.by.can <- lapply(r2.added.means.list,function(x){
+  bound.fields <- data.frame(Reduce(rbind,x))
+  names(bound.fields) <- c("miRNA","TF","lncRNA","methyl","CNV","SNP")
+  return(bound.fields)
+})
+
+for(i in 1:length(reg.means.df.by.can)){
+  rownames(reg.means.df.by.can[[i]]) <- names(r2.added.list[[1]])
+}
+
+mygene = "CRYBB2"
+
+gene.list <- lapply(r2.added.list,function(x){
+  newdf <- x[[mygene]]
+  rownames(newdf) <- 1:nrow(newdf)
+  return(newdf)
+})
+
+full.gene.df <- Reduce(rbind,gene.list)
+full.gene.df$cancer <- rep(names(r2.added.list),each = nrow(gene.list$BLCA))
+
+full.gene.df.mlt <- melt(full.gene.df)
+full.gene.df.mlt <- full.gene.df.mlt[full.gene.df.mlt$variable == "r2.growth",]
+
+
+```
+
+##Figure 4d CRYBB2 Normal - tumour-adjacent tissue
+```{r}
+
+ggplot(full.gene.df.mlt,aes(x = var.added.f, y = value,fill = cancer)) + 
+  geom_boxplot() + xlab("Regulator") + ylab("R2 Added") + ylim(c(-1,1)) + 
+  theme(axis.text=element_text(size=12,face="bold"),
+        axis.title=element_text(size=14,face="bold")) + 
+  scale_fill_manual(values = tum.cols)
+
+
+```
+
+
+
+
+
+
+
+
+
+

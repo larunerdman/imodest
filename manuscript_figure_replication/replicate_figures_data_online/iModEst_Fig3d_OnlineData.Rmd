@@ -1,0 +1,202 @@
+---
+title: "iModEst_Fig3d"
+author: "Lauren Erdman"
+date: "January 16, 2023"
+output: html_document
+---
+
+```{r, include = FALSE}
+## required libraries
+library("reshape2")
+library("ggplot2")
+library("httr")
+
+```
+
+```{r, include = FALSE}
+
+## user-defined functions
+read_remote_rds <- function(url) {
+  # Make a GET request and save the response
+  response <- GET(url)
+ 
+  # Check if the request was successful
+  stop_for_status(response)
+ 
+  # Write the raw content to a temporary file and read it with readRDS
+  temp_file <- tempfile(fileext = ".rds")
+  writeBin(content(response), temp_file)
+  data <- readRDS(temp_file)
+ 
+  # Return the data
+  return(data)
+}
+
+
+add.alpha <- function(col, alpha=1){
+  if(missing(col))
+    stop("Please provide a vector of colours.")
+  apply(sapply(col, col2rgb)/255, 2, 
+        function(x) 
+          rgb(x[1], x[2], x[3], alpha=alpha))  
+}
+
+make.methyl.coef <- function(gene,cancer,model){
+  gene.to.test = gene
+  gene.to.test.ens <- gene.info.list$target_id[gene.info.list$gene_name == gene.to.test]
+  # tum.r2.dfs.sub[["LIHC"]][,gene.to.test.ens]
+  
+  best.model.coefs <- readRDS(paste0("C:/Users/larun/Desktop/Modes/Data/model-coefs/",cancer,"/",cancer,"_0_model_coeff_",model,".rds"))
+  
+  coefs.df <- data.frame(cbind(sort(best.model.coefs[[gene.to.test.ens]],decreasing = T),substr(names(sort(best.model.coefs[[gene.to.test.ens]],decreasing = T)),start = 1,stop = 2)))
+  names(coefs.df) <- c("coef.val","coef.class")
+  coefs.df$coef.val <- as.numeric(as.character(coefs.df$coef.val))
+  
+  methyl.coefs.df <- coefs.df[substr(x = rownames(coefs.df),start = 1,stop = 2) == "cg",]
+  methyl.coefs.df$bp <- illum.mani$MAPINFO[match(table = illum.mani$Name,x = rownames(methyl.coefs.df))]
+  
+  return(methyl.coefs.df)  
+}
+
+gg_color_hue <- function(n=21) {
+  ## ggplot default rainbow colors from: https://stackoverflow.com/questions/8197559/emulate-ggplot2-default-color-palette 
+  # hues = seq(15, 375, length = n + 1)
+  
+  hues = seq(25, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+```
+
+
+##Set base values
+```{r}
+
+###   READING IN TUMOUR FILES -- R2
+#####
+cans <- "BLCA, BRCA, CESC, ESCA, HNSC, KIRC, KIRP, LGG, LIHC, LUAD, LUSC, PAAD, PCPG, PRAD, READ-COAD, SARC, SKCM, STAD, TGCT, THCA, UCEC"
+tums <- unlist(strsplit(x = cans,split = ",\ "))
+tum.vec <- tums
+cancers.of.int <- tums
+
+tum.cols <- gg_color_hue(21)
+
+r2_data_path = 'https://imodesttool.com/api/data/download/'
+
+
+```
+
+
+##Read in tumour data
+```{r}
+
+tumour.r2.dfs <- list()
+gene.tum.details.df <- list()
+
+k=1
+for(cancer in cancers.of.int){
+  
+  ## Reading in PRESS R2 results
+  tumour.r2.dfs[[k]] <- read_remote_rds(paste0(r2_data_path,'/full/performance_files/tumour_PRESS_R2/',cancer,"_0_tumor_r_square_1.rds")) 
+  # cancer <- gsub(pattern = "_.*$",replacement = "",x = tumour.file.in)
+  names(tumour.r2.dfs)[k] <- cancer
+  
+  ## Reading in cancer model details
+  ## Reading in cancer model details
+  summary_file = paste0(cancer,"_0_data_summary.rds")
+  
+  
+  ## Reading in cancer model details
+  gene.tum.details.df[[k]] <- read_remote_rds(paste0(r2_data_path,'/full/performance_files/summary_files/',summary_file))
+  names(gene.tum.details.df)[k] <- cancer
+  
+  k=k+1
+}
+
+
+tum.r2.dfs  <- tumour.r2.dfs
+tum.r2.dfs.sub  <- tumour.r2.dfs
+
+### MAKING OVERALL GENE SUMMARY
+num.reg.sum <- lapply(gene.tum.details.df,function(x){x$NUM_REGULATORS})
+overall.summary <- Reduce(rbind,num.reg.sum)
+overall.summary <- overall.summary[!duplicated(overall.summary$target_id),]
+
+```
+
+
+##Read in summarized miRNA coefficient data
+```{r}
+
+###
+###   READ IN SUMMARIZED MIRNA FROM PREPPED FILES -- UPDATE BCL2 GRAPH/FIG
+###
+
+mirna.coef.means = list()
+
+for(cancer in cancers.of.int){
+  mirna.coef.means[[cancer]] = read_remote_rds(paste0(r2_data_path,"/full/coefficient_files/miRNA/",cancer,"_miRNA_means.rds"))
+}
+
+for(cancer in cancers.of.int){
+  
+  names(mirna.coef.means[[cancer]]) = gene.tum.details.df[[cancer]]$NUM_REGULATORS$gene_name[match(names(mirna.coef.means[[cancer]]),
+                                                                                                   gene.tum.details.df[[cancer]]$NUM_REGULATORS$target_id)]
+    
+}
+
+bcl2.mirna = list()
+
+for(cancer in cancers.of.int){
+  bcl2.mirna[[cancer]] = mirna.coef.means[[cancer]][['BCL2']]
+}
+
+bcl2.mirna.names = unique(unlist(lapply(bcl2.mirna,function(x)names(x$wt))))
+bcl2.df = data.frame(matrix(ncol = length(names(bcl2.mirna)), nrow = length(bcl2.mirna.names)))
+names(bcl2.df) = names(bcl2.mirna)
+row.names(bcl2.df) = bcl2.mirna.names
+# head(bcl2.df)
+
+for(cancer in cancers.of.int){
+  bcl2.df[names(bcl2.mirna[[cancer]]$wt),cancer] = bcl2.mirna[[cancer]]$wt
+}
+
+## Remove large outliers
+bcl2.df[bcl2.df > 100] = 0 
+bcl2.df[bcl2.df < -100] = 0 
+
+bcl2.mirna.sums = apply(bcl2.df,1,function(x)sum(na.omit(x)))
+top_mirna = names(sort(bcl2.mirna.sums)[1:10])
+
+bcl2.top.mirna = bcl2.df[top_mirna,]
+mirna.sums = apply(bcl2.top.mirna,1,sum)
+
+bcl2.mlt = melt(bcl2.top.mirna)
+bcl2.mlt$miRNA = rep(top_mirna,length(cancers.of.int))
+bcl2.mlt$miRNA = factor(bcl2.mlt$miRNA, levels = top_mirna[order(mirna.sums)])
+names(bcl2.mlt)[1] = "cancer"
+bcl2.mlt$cancer = factor(bcl2.mlt$cancer, levels = cancers.of.int)
+
+# head(bcl2.mlt)
+
+```
+
+
+##Plot top 10 miRNA 
+```{r}
+
+###
+###   PLOT MIRNAs
+###
+
+theme_set(
+  theme_classic(base_size = 20)
+)
+ggplot(bcl2.mlt,aes(x = miRNA,y = value, fill = cancer)) + 
+  geom_bar(stat = "identity") + 
+  scale_fill_manual(values = tum.cols) + 
+  theme(axis.text.x = element_text(angle = 90, face = "bold", colour = "grey2")) + 
+  geom_hline(yintercept = 0, col = "red", lwd = 2, lty = 2) 
+
+```
+
